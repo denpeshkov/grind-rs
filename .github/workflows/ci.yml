@@ -84,7 +84,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-      - uses: taiki-e/install-action@v2.86.8
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: cargo-docs-rs
       - uses: Swatinem/rust-cache@v2.9.2
@@ -99,7 +99,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - uses: taiki-e/install-action@v2.86.8
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@v2.9.2
@@ -131,7 +131,7 @@ jobs:
         with:
           toolchain: stable
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@v2.86.8
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2.9.2
