@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+# Grant no permissions by default. Jobs opt into what they need.
+# See https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication
+permissions: {}
+
+# Cancel outdated runs for the same PR or branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  # Checks that the code is formatted according to rustfmt.
+  fmt:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo fmt --all --check
+
+  # Checks that the code does not contain any typos.
+  typos:
+    name: Check typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: crate-ci/typos@master
+
+  # Checks that the code does not contain any clippy warnings.
+  clippy:
+    name: Clippy ${{ matrix.toolchain }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo clippy --all-targets --all-features
+        continue-on-error: ${{ matrix.toolchain == 'beta' }}
+
+  # Checks for semver violations.
+  semver:
+    name: Check SemVer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: obi1kenobi/cargo-semver-checks-action@v2.9
+        with:
+          baseline-rev: main
+
+  # Checks that the code can be documented without errors.
+  docs:
+    name: Check docs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - uses: taiki-e/install-action@v2.86.8
+        with:
+          tool: cargo-docs-rs
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo docs-rs
+
+  # Run cargo check for all features combinations.
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@v2.86.8
+        with:
+          tool: cargo-hack
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo hack check --feature-powerset --no-dev-deps
+
+  # Run the test suite.
+  test:
+    name: Test ${{ matrix.toolchain }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo test --locked --all-features --all-targets
+      - run: cargo test --locked --all-features --doc
+
+  # Generate a coverage report.
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@v2.86.8
+        with:
+          tool: cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo llvm-cov --locked --all-features --lcov --output-path lcov.info
+      - uses: codecov/codecov-action@v7.0.0
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
