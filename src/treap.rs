@@ -5,84 +5,36 @@ use std::hash::{self, Hash};
 use std::iter::FusedIterator;
 use std::ops::{self, Bound, Index, RangeBounds};
 
+use rand::RngExt;
+
 /// An ordered map based on a treap (cartesian tree).
 ///
 /// It is a logic error for a key to be modified in such a way that the key’s
 /// ordering relative to any other key, as determined by the [`Ord`] trait,
 /// changes while it is in the map.
 #[derive(Debug, Clone)]
-pub struct Treap<K, V> {
+pub struct Treap<K, V, R = rand::rngs::SmallRng> {
     root: Option<Box<Node<K, V>>>,
+    rng: R,
 }
 
-impl<K, Q, V> Index<&Q> for Treap<K, V>
-where
-    K: Borrow<Q> + Ord,
-    Q: Ord + ?Sized,
-{
-    type Output = V;
-    fn index(&self, key: &Q) -> &Self::Output {
-        self.get(key).expect("no entry found for key")
-    }
+#[derive(Debug, Clone)]
+struct Node<K, V> {
+    key: K,
+    value: V,
+    priority: u64,
+    size: usize,
+    left: Option<Box<Node<K, V>>>,
+    right: Option<Box<Node<K, V>>>,
 }
 
-impl<K, V> PartialEq for Treap<K, V>
-where
-    K: Ord,
-    V: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.iter().eq(other.iter())
-    }
-}
-
-impl<K, V> Eq for Treap<K, V>
-where
-    K: Ord,
-    V: Eq,
-{
-}
-
-impl<K, V> PartialOrd for Treap<K, V>
-where
-    K: Ord,
-    V: PartialOrd,
-{
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.iter().partial_cmp(other.iter())
-    }
-}
-
-impl<K, V> Ord for Treap<K, V>
-where
-    K: Ord,
-    V: Ord,
-{
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.iter().cmp(other.iter())
-    }
-}
-
-impl<K, V> Hash for Treap<K, V>
-where
-    K: Hash,
-    V: Hash,
-{
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: hash::Hasher,
-    {
-        self.len().hash(state);
-        for elt in self {
-            elt.hash(state);
-        }
-    }
-}
-
-impl<K, V> Treap<K, V> {
-    /// Makes a new, empty [`Treap`].
+impl<K, V> Treap<K, V, rand::rngs::SmallRng> {
+    /// Creates an empty [`Treap`].
     pub fn new() -> Self {
-        Self { root: None }
+        Self {
+            root: None,
+            rng: rand::make_rng(),
+        }
     }
 
     /// Clears the map, removing all elements.
@@ -92,7 +44,10 @@ impl<K, V> Treap<K, V> {
 
     /// Returns the number of elements in the map.
     pub fn len(&self) -> usize {
-        self.root.as_deref().map_or(0, |n| n.size)
+        match &self.root {
+            Some(root) => root.size,
+            None => 0,
+        }
     }
 
     /// Returns true if the map contains no elements.
@@ -101,9 +56,15 @@ impl<K, V> Treap<K, V> {
     }
 }
 
+impl<K, V, R> Treap<K, V, R> {
+    /// Creates an empty [`Treap`] which will use the given RNG for generating priorities.
+    pub fn with_rng(rng: R) -> Self {
+        Self { root: None, rng }
+    }
+}
+
 impl<K: Ord, V> Treap<K, V> {
     /// Returns a reference to the value corresponding to the key.
-    /// The ordering on the borrowed form **must** match the ordering on the key type.
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -113,7 +74,6 @@ impl<K: Ord, V> Treap<K, V> {
     }
 
     /// Returns a mutable reference to the value corresponding to the key.
-    /// The ordering on the borrowed form must match the ordering on the key type.
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
@@ -128,14 +88,14 @@ impl<K: Ord, V> Treap<K, V> {
     /// value is returned.
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         let Some(root) = self.root.take() else {
-            self.root = Some(Box::new(Node::new(key, value)));
+            self.root = Some(Box::new(Node::new(key, value, self.rng.random())));
             return None;
         };
         let (l, x, r) = root.split(&key);
         // Update x in place if it already exists, or create a fresh x.
         let (old, x) = match x {
             Some(mut x) => (Some(std::mem::replace(&mut x.value, value)), x),
-            None => (None, Box::new(Node::new(key, value))),
+            None => (None, Box::new(Node::new(key, value, self.rng.random()))),
         };
         self.root = Node::merge(l, Node::merge(Some(x), r));
         old
@@ -143,7 +103,6 @@ impl<K: Ord, V> Treap<K, V> {
 
     /// Removes a key from the map, returning the stored key and value if the key was previously in
     /// the map.
-    /// The ordering on the borrowed form must match the ordering on the key type.
     pub fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
     where
         K: Borrow<Q>,
@@ -232,6 +191,7 @@ impl<K: Ord, V> Treap<K, V> {
 /// This function panics if:
 /// - `start > end`.
 /// - `start == end` and both are `Excluded`.
+#[track_caller]
 fn assert_range<T, R>(range: &R)
 where
     T: Ord + ?Sized,
@@ -254,6 +214,73 @@ impl<K, V> Default for Treap<K, V> {
     /// Creates an empty [`Treap`].
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<K, Q, V> Index<&Q> for Treap<K, V>
+where
+    K: Borrow<Q> + Ord,
+    Q: Ord + ?Sized,
+{
+    type Output = V;
+    fn index(&self, key: &Q) -> &Self::Output {
+        self.get(key).expect("no entry found for key")
+    }
+}
+
+impl<K, V> PartialEq for Treap<K, V>
+where
+    K: Ord,
+    V: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        self.iter().eq(other.iter())
+    }
+}
+
+impl<K, V> Eq for Treap<K, V>
+where
+    K: Ord,
+    V: Eq,
+{
+}
+
+impl<K, V> PartialOrd for Treap<K, V>
+where
+    K: Ord,
+    V: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.iter().partial_cmp(other.iter())
+    }
+}
+
+impl<K, V> Ord for Treap<K, V>
+where
+    K: Ord,
+    V: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iter().cmp(other.iter())
+    }
+}
+
+impl<K, V> Hash for Treap<K, V>
+where
+    K: Hash,
+    V: Hash,
+{
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
+        self.len().hash(state);
+        for elt in self {
+            elt.hash(state);
+        }
     }
 }
 
@@ -566,22 +593,12 @@ where
 {
 }
 
-#[derive(Debug, Clone)]
-struct Node<K, V> {
-    key: K,
-    value: V,
-    priority: u64,
-    size: usize,
-    left: Option<Box<Node<K, V>>>,
-    right: Option<Box<Node<K, V>>>,
-}
-
 impl<K, V> Node<K, V> {
-    pub fn new(key: K, value: V) -> Self {
+    pub fn new(key: K, value: V, priority: u64) -> Self {
         Self {
             key,
             value,
-            priority: rand::random(),
+            priority,
             size: 1,
             left: None,
             right: None,
