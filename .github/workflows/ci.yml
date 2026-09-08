@@ -70,6 +70,8 @@ jobs:
         with:
           toolchain: stable
       - uses: obi1kenobi/cargo-semver-checks-action@v2.9
+        with:
+          baseline-rev: main
 
   # Checks that the code can be documented without errors.
   docs:
