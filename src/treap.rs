@@ -958,7 +958,7 @@ mod tests {
     #[derive(Copy, Clone, Debug)]
     enum Ops<K, V> {
         Get(K),
-        Insert((K, V)),
+        Insert(K, V),
         Remove(K),
         Clear,
         PopFirst,
@@ -969,7 +969,7 @@ mod tests {
     fn ops_strategy() -> impl Strategy<Value = Ops<i32, i32>> {
         prop_oneof![
             (-64..=64).prop_map(Ops::Get),
-            (-64..=64, -64..=64).prop_map(Ops::Insert),
+            (-64..=64, -64..=64).prop_map(|(k, v)| Ops::Insert(k, v)),
             (-64..=64).prop_map(Ops::Remove),
             Just(Ops::Clear),
             Just(Ops::PopFirst),
@@ -993,7 +993,7 @@ mod tests {
                         let got = std::panic::catch_unwind(|| map[&key]);
                         prop_assert_eq!(want.ok(), got.ok(), "test [] (indexing)");
                     }
-                    Ops::Insert((key, value)) => {
+                    Ops::Insert(key, value) => {
                         prop_assert_eq!(std_map.insert(key, value), map.insert(key, value));
                     }
                     Ops::Remove(key) => {
