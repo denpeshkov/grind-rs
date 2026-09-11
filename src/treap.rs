@@ -5,7 +5,7 @@ use std::hash::{self, Hash};
 use std::iter::FusedIterator;
 use std::ops::{self, Bound, Index, RangeBounds};
 
-use rand::RngExt;
+use rand::{RngExt, rngs};
 
 /// An ordered map based on a treap (cartesian tree).
 ///
@@ -13,9 +13,9 @@ use rand::RngExt;
 /// ordering relative to any other key, as determined by the [`Ord`] trait,
 /// changes while it is in the map.
 #[derive(Debug, Clone)]
-pub struct Treap<K, V, Rng = rand::rngs::SmallRng> {
+pub struct Treap<K, V, R = rngs::SmallRng> {
     root: Option<Box<Node<K, V>>>,
-    rng: Rng,
+    rng: R,
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ struct Node<K, V> {
     right: Option<Box<Node<K, V>>>,
 }
 
-impl<K, V> Treap<K, V, rand::rngs::SmallRng> {
+impl<K, V> Treap<K, V> {
     /// Creates an empty [`Treap`].
     pub fn new() -> Self {
         Self {
@@ -38,9 +38,9 @@ impl<K, V> Treap<K, V, rand::rngs::SmallRng> {
     }
 }
 
-impl<K, V, Rng> Treap<K, V, Rng> {
+impl<K, V, R> Treap<K, V, R> {
     /// Creates an empty [`Treap`] which will use the given RNG for generating priorities.
-    pub fn with_rng(rng: Rng) -> Self {
+    pub fn with_rng(rng: R) -> Self {
         Self { root: None, rng }
     }
 
@@ -63,7 +63,7 @@ impl<K, V, Rng> Treap<K, V, Rng> {
     }
 }
 
-impl<K, V, Rng> Treap<K, V, Rng>
+impl<K, V, R> Treap<K, V, R>
 where
     K: Ord,
 {
@@ -126,11 +126,11 @@ where
     ///
     /// Panics if range `start > end`.
     /// Panics if range `start == end` and both bounds are [Excluded](ops::Bound::Excluded).
-    pub fn range<Q, R>(&self, range: R) -> Range<'_, K, V, R>
+    pub fn range<Q, B>(&self, range: B) -> Range<'_, K, V, B>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
-        R: ops::RangeBounds<Q>,
+        B: ops::RangeBounds<Q>,
     {
         assert_range(&range);
         Range {
@@ -146,11 +146,11 @@ where
     ///
     /// Panics if range `start > end`.
     /// Panics if range `start == end` and both bounds are [Excluded](ops::Bound::Excluded).
-    pub fn range_mut<Q, R>(&mut self, range: R) -> RangeMut<'_, K, V, R>
+    pub fn range_mut<Q, B>(&mut self, range: B) -> RangeMut<'_, K, V, B>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
-        R: ops::RangeBounds<Q>,
+        B: ops::RangeBounds<Q>,
     {
         assert_range(&range);
         RangeMut {
@@ -171,10 +171,10 @@ where
     }
 }
 
-impl<K, V, Rng> Treap<K, V, Rng>
+impl<K, V, R> Treap<K, V, R>
 where
     K: Ord,
-    Rng: rand::Rng,
+    R: rand::Rng,
 {
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, [`None`] is returned.
@@ -201,10 +201,10 @@ where
 /// - `start > end`.
 /// - `start == end` and both are `Excluded`.
 #[track_caller]
-fn assert_range<T, R>(range: &R)
+fn assert_range<T, B>(range: &B)
 where
     T: Ord + ?Sized,
-    R: RangeBounds<T>,
+    B: RangeBounds<T>,
 {
     match (range.start_bound(), range.end_bound()) {
         (Bound::Excluded(s), Bound::Excluded(e)) if s == e => {
@@ -226,7 +226,7 @@ impl<K, V> Default for Treap<K, V> {
     }
 }
 
-impl<K, Q, V, Rng> Index<&Q> for Treap<K, V, Rng>
+impl<K, Q, V, R> Index<&Q> for Treap<K, V, R>
 where
     K: Borrow<Q> + Ord,
     Q: Ord + ?Sized,
@@ -237,12 +237,12 @@ where
     }
 }
 
-impl<K, V, Rng1, Rng2> PartialEq<Treap<K, V, Rng2>> for Treap<K, V, Rng1>
+impl<K, V, R> PartialEq<Treap<K, V, R>> for Treap<K, V, R>
 where
     K: Ord,
     V: PartialEq,
 {
-    fn eq(&self, other: &Treap<K, V, Rng2>) -> bool {
+    fn eq(&self, other: &Treap<K, V, R>) -> bool {
         if self.len() != other.len() {
             return false;
         }
@@ -250,24 +250,24 @@ where
     }
 }
 
-impl<K, V, Rng> Eq for Treap<K, V, Rng>
+impl<K, V, R> Eq for Treap<K, V, R>
 where
     K: Ord,
     V: Eq,
 {
 }
 
-impl<K, V, Rng1, Rng2> PartialOrd<Treap<K, V, Rng2>> for Treap<K, V, Rng1>
+impl<K, V, R> PartialOrd<Treap<K, V, R>> for Treap<K, V, R>
 where
     K: Ord,
     V: PartialOrd,
 {
-    fn partial_cmp(&self, other: &Treap<K, V, Rng2>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Treap<K, V, R>) -> Option<Ordering> {
         self.iter().partial_cmp(other.iter())
     }
 }
 
-impl<K, V, Rng> Ord for Treap<K, V, Rng>
+impl<K, V, R> Ord for Treap<K, V, R>
 where
     K: Ord,
     V: Ord,
@@ -277,7 +277,7 @@ where
     }
 }
 
-impl<K, V, Rng> Hash for Treap<K, V, Rng>
+impl<K, V, R> Hash for Treap<K, V, R>
 where
     K: Hash,
     V: Hash,
@@ -293,7 +293,7 @@ where
     }
 }
 
-impl<'a, K, V, Rng> IntoIterator for &'a Treap<K, V, Rng> {
+impl<'a, K, V, R> IntoIterator for &'a Treap<K, V, R> {
     type Item = (&'a K, &'a V);
     type IntoIter = Iter<'a, K, V>;
     fn into_iter(self) -> Self::IntoIter {
@@ -398,7 +398,7 @@ impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> {
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
 /// An owning iterator over the entries of a BTreeMap, sorted by key.
-impl<K, V, Rng> IntoIterator for Treap<K, V, Rng> {
+impl<K, V, R> IntoIterator for Treap<K, V, R> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
     fn into_iter(self) -> Self::IntoIter {
@@ -461,10 +461,10 @@ where
     }
 }
 
-impl<K, V, Rng> Extend<(K, V)> for Treap<K, V, Rng>
+impl<K, V, R> Extend<(K, V)> for Treap<K, V, R>
 where
     K: Ord,
-    Rng: rand::Rng,
+    R: rand::Rng,
 {
     fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
         for (key, value) in iter {
@@ -473,11 +473,11 @@ where
     }
 }
 
-impl<'a, K, V, Rng> Extend<(&'a K, &'a V)> for Treap<K, V, Rng>
+impl<'a, K, V, R> Extend<(&'a K, &'a V)> for Treap<K, V, R>
 where
     K: Ord + Copy,
     V: Copy,
-    Rng: rand::Rng,
+    R: rand::Rng,
 {
     fn extend<T: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: T) {
         for (key, value) in iter {
@@ -487,16 +487,16 @@ where
 }
 
 /// An iterator over a sub-range of entries in a [Treap]
-pub struct Range<'a, K, V, R> {
+pub struct Range<'a, K, V, B> {
     node: Option<&'a Node<K, V>>,
     stack: Vec<&'a Node<K, V>>,
-    range: R,
+    range: B,
 }
 
-impl<'a, K, V, R> Iterator for Range<'a, K, V, R>
+impl<'a, K, V, B> Iterator for Range<'a, K, V, B>
 where
     K: Ord,
-    R: ops::RangeBounds<K>,
+    B: ops::RangeBounds<K>,
 {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -535,26 +535,26 @@ where
     }
 }
 
-impl<'a, K, V, R> FusedIterator for Range<'a, K, V, R>
+impl<'a, K, V, B> FusedIterator for Range<'a, K, V, B>
 where
     K: Ord,
-    R: ops::RangeBounds<K>,
+    B: ops::RangeBounds<K>,
 {
 }
 
 /// A mutable iterator over a sub-range of entries in a [Treap].
-pub struct RangeMut<'a, K, V, R> {
+pub struct RangeMut<'a, K, V, B> {
     node: Option<&'a mut Node<K, V>>,
     #[allow(clippy::type_complexity)]
     /// Holds the pieces of the node we need to visit later: (key, value, right child)
     stack: Vec<(&'a K, &'a mut V, Option<&'a mut Node<K, V>>)>,
-    range: R,
+    range: B,
 }
 
-impl<'a, K, V, R> Iterator for RangeMut<'a, K, V, R>
+impl<'a, K, V, B> Iterator for RangeMut<'a, K, V, B>
 where
     K: Ord,
-    R: ops::RangeBounds<K>,
+    B: ops::RangeBounds<K>,
 {
     type Item = (&'a K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -597,10 +597,10 @@ where
     }
 }
 
-impl<'a, K, V, R> FusedIterator for RangeMut<'a, K, V, R>
+impl<'a, K, V, B> FusedIterator for RangeMut<'a, K, V, B>
 where
     K: Ord,
-    R: ops::RangeBounds<K>,
+    B: ops::RangeBounds<K>,
 {
 }
 
@@ -658,7 +658,10 @@ impl<K, V> Node<K, V> {
     }
 }
 
-impl<K: Ord, V> Node<K, V> {
+impl<K, V> Node<K, V>
+where
+    K: Ord,
+{
     fn get<Q>(&self, key: &Q) -> Option<&Self>
     where
         K: Borrow<Q>,
@@ -788,7 +791,7 @@ mod tests {
     #[test]
     fn with_rng() {
         assert_eq!(
-            &Treap::<i32, i32, _>::with_rng(rand::rng()),
+            &Treap::<i32, i32>::with_rng(rand::make_rng()),
             &Treap::<i32, i32>::new()
         );
     }
