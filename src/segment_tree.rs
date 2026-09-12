@@ -90,7 +90,6 @@ where
     pub fn query<R>(&self, range: R) -> T
     where
         R: ops::RangeBounds<usize>,
-        T: Debug,
     {
         let (mut start, mut end) = self.range_start_end(range);
         let mut result = M::id();
